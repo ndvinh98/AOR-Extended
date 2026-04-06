@@ -1,3 +1,10 @@
+import { ParameterMappings, getParam, getPosition } from '../Utils/ParameterMappings.js';
+
+const PM = ParameterMappings.NewCharacter;
+const PM_HEALTH = ParameterMappings.HealthUpdate;
+const PM_EQUIP = ParameterMappings.CharacterEquipmentChanged;
+const PM_MOUNT = ParameterMappings.Mounted;
+
 class Player {
   constructor(
     posX,
@@ -77,13 +84,7 @@ export class PlayersHandler {
   }
 
   updateItems(id, Parameters) {
-    let items = null;
-
-    try {
-      items = Parameters[2];
-    } catch {
-      items = null;
-    }
+    const items = getParam(Parameters, PM_EQUIP.items, null, 'CharacterEquipmentChanged');
 
     if (items != null) {
       this.playersInRange.forEach((playerOne) => {
@@ -98,8 +99,13 @@ export class PlayersHandler {
     if (!this.settings.settingOnOff) return;
 
     /* General */
-    const id = Parameters[0];
-    const nickname = Parameters[1];
+    const id = getParam(Parameters, PM.id, null, 'NewCharacter');
+    const nickname = getParam(Parameters, PM.nickname, null, 'NewCharacter');
+
+    if (id == null || nickname == null) {
+      console.warn('[PlayersHandler] Missing id or nickname in NewCharacter event');
+      return;
+    }
 
     if (this.alreadyFilteredPlayers.find((name) => name === nickname.toUpperCase())) return;
 
@@ -107,34 +113,42 @@ export class PlayersHandler {
       this.alreadyFilteredPlayers.push(nickname.toUpperCase());
     }
 
-    const guildName = String(Parameters[8]);
+    const guildName = String(getParam(Parameters, PM.guildName, '', 'NewCharacter'));
 
     if (this.filteredGuilds.find((name) => name === guildName.toUpperCase())) {
       this.alreadyFilteredPlayers.push(nickname.toUpperCase());
     }
 
-    const alliance = String(Parameters[49]);
+    const alliance = String(getParam(Parameters, PM.alliance, '', 'NewCharacter'));
 
     if (this.filteredAlliances.find((name) => name === alliance.toUpperCase())) {
       this.alreadyFilteredPlayers.push(nickname.toUpperCase());
     }
 
     /* Position */
-    var positionArray = Parameters[14];
-    const posX = positionArray[0];
-    const posY = positionArray[1];
+    const posX = getParam(Parameters, PM.posX, null, 'NewCharacter: posX');
+    const posY = getParam(Parameters, PM.posY, null, 'NewCharacter: posY');
+    
+    let pos = null;
+    if (posX !== null && posY !== null) {
+        pos = { posX: posX, posY: posY };
+    } else {
+        // We have to rely on a future Move or Cast event?
+        console.warn(`[PlayersHandler] Missing position in NewCharacter event for ${nickname}`);
+        pos = { posX: 0, posY: 0 };
+    }
 
     /* Health */
-    const currentHealth = Parameters[20];
-    const initialHealth = Parameters[21];
+    const currentHealth = getParam(Parameters, PM.currentHealth, 0, 'NewCharacter');
+    const initialHealth = getParam(Parameters, PM.initialHealth, 0, 'NewCharacter');
 
     /* Items & flag */
-    const items = Parameters[38];
-    const flagId = Parameters[51];
+    const items = getParam(Parameters, PM.items, null, 'NewCharacter');
+    const flagId = getParam(Parameters, PM.flagId, 0, 'NewCharacter');
 
     this.addPlayer(
-      posX,
-      posY,
+      pos.posX,
+      pos.posY,
       id,
       nickname,
       guildName,
@@ -148,9 +162,8 @@ export class PlayersHandler {
   }
 
   handleMountedPlayerEvent(id, parameters) {
-    let ten = parameters[10];
-
-    let mounted = parameters[11];
+    const ten = getParam(parameters, PM_MOUNT.param10, null, 'Mounted');
+    const mounted = getParam(parameters, PM_MOUNT.mounted, null, 'Mounted');
 
     if (mounted == "true" || mounted == true) {
       this.updatePlayerMounted(id, true);
@@ -247,12 +260,13 @@ export class PlayersHandler {
   }
 
   UpdatePlayerHealth(Parameters) {
-    var uPlayer = this.playersInRange.find((player) => player.id === Parameters[0]);
+    const healthId = getParam(Parameters, PM_HEALTH.id, null, 'HealthUpdate');
+    var uPlayer = this.playersInRange.find((player) => player.id === healthId);
 
     if (!uPlayer) return;
 
-    uPlayer.currentHealth = Parameters[2];
-    uPlayer.initialHealth = Parameters[3];
+    uPlayer.currentHealth = getParam(Parameters, PM_HEALTH.currentHealth, uPlayer.currentHealth, 'HealthUpdate');
+    uPlayer.initialHealth = getParam(Parameters, PM_HEALTH.initialHealth, uPlayer.initialHealth, 'HealthUpdate');
   }
 
   clear() {

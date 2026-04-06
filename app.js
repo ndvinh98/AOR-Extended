@@ -65,6 +65,21 @@ app.get("/drawing", (req, res) => {
   res.render("main/drawing");
 });
 
+app.use(express.json({limit: '50mb'}));
+
+app.post("/save-raw-log", (req, res) => {
+  try {
+    const data = req.body;
+    const filename = `raw_packet_debug_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+    const filePath = path.join(__dirname, filename);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
+    res.send({ success: true, filename });
+  } catch (error) {
+    console.error("Error saving raw log:", error);
+    res.status(500).send({ success: false, error: error.message });
+  }
+});
+
 app.use("/scripts", express.static(__dirname + "/scripts"));
 app.use("/mob-info", express.static(__dirname + "/mob-info"));
 app.use("/scripts/Handlers", express.static(__dirname + "/scripts/Handlers"));

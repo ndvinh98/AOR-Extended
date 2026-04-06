@@ -9,6 +9,8 @@ import { FishingDrawing } from "../Drawings/FishingDrawing.js";
 
 import { TrackFootprintsDrawing } from "../Drawings/TrackFootprintsDrawing.js";
 import { EventCodes } from "./EventCodes.js";
+import { PacketDebugger } from "./PacketDebugger.js";
+import { ParameterMappings, getParam, getPosition } from "./ParameterMappings.js";
 
 import { PlayersHandler } from "../Handlers/PlayersHandler.js";
 import { MobsHandler } from "../Handlers/MobsHandler.js";
@@ -67,6 +69,8 @@ const trackFootprintsHandler = new TrackFootprintsHandler(settings);
 const trackFootprintsDrawing = new TrackFootprintsDrawing(settings);
 playersDrawing.updateItemsInfo(itemsInfo.iteminfo);
 
+const packetDebugger = new PacketDebugger();
+
 
 let lpX = 0.0;
 let lpY = 0.0;
@@ -78,11 +82,48 @@ drawingUtils.InitOurPlayerCanvas(canvasOurPlayer, contextOurPlayer);
 
 const socket = new WebSocket("ws://localhost:5002");
 
+// Raw Packet Capture
+const rawPacketLog = [];
+let isCapturingRaw = false;
+
+document.getElementById('captureRawEventsBtn').addEventListener('click', function() {
+    isCapturingRaw = !isCapturingRaw;
+    if (isCapturingRaw) {
+        rawPacketLog.length = 0;
+        this.innerText = 'Stop & Save Raw Events';
+        this.style.backgroundColor = 'darkgreen';
+        console.log("Started capturing raw socket events...");
+    } else {
+        this.innerText = 'Capture Raw Events';
+        this.style.backgroundColor = 'darkred';
+        console.log(`Stopped capture. Saving ${rawPacketLog.length} raw events...`);
+        
+        fetch('/save-raw-log', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(rawPacketLog)
+        })
+        .then(res => res.json())
+        .then(res => {
+            console.log("Raw log saved to " + res.filename);
+            alert("Saved raw events to: " + res.filename);
+        })
+        .catch(err => {
+            console.error("Failed to save", err);
+            alert("Failed to save raw events. See console.");
+        });
+    }
+});
+
 socket.addEventListener("open", (event) => {
   console.log("Connected to the WebSocket server.");
 });
 
 socket.addEventListener("message", (event) => {
+  if (isCapturingRaw) {
+    rawPacketLog.push(event.data);
+  }
+
   var data = JSON.parse(event.data);
 
   // Extract the string and dictionary from the object
@@ -108,6 +149,9 @@ socket.addEventListener("message", (event) => {
 function onEvent(Parameters) {
   const id = parseInt(Parameters[0]);
   const eventCode = Parameters[252];
+
+  // Debug logging (no-op when disabled)
+  packetDebugger.logEvent(eventCode, Parameters);
 
   switch (eventCode) {
     case EventCodes.NewHuntTrack:
@@ -184,11 +228,11 @@ function onEvent(Parameters) {
       chestsHandler.addChestEvent(Parameters);
       break;
 
-    case EventCodes.NewMistsCagedWisp:
+    case EventCodes.NewCagedObject:
       wispCageHandler.NewCageEvent(Parameters);
       break;
 
-    case EventCodes.MistsWispCageOpened:
+    case EventCodes.CagedObjectStateUpdated:
       wispCageHandler.CageOpenedEvent(Parameters);
       break;
 
@@ -208,24 +252,37 @@ function onEvent(Parameters) {
 }
 
 function onRequest(Parameters) {
-  // Player moving
-  if (Parameters[253] == 21) {
-    lpX = Parameters[1][0];
-    lpY = Parameters[1][1];
+  // Debug logging
+  packetDebugger.logRequest(Parameters);
 
-    //console.log("X: " + lpX + ", Y: " + lpY);
+  // Player moving
+  const reqOpCode = Parameters[253];
+  if (reqOpCode == 21) {
+    const pos = getPosition(Parameters, ParameterMappings.RequestMove.position, 'RequestMove');
+    if (pos) {
+      lpX = pos.posX;
+      lpY = pos.posY;
+    }
   }
 }
 
 function onResponse(Parameters) {
+  // Debug logging
+  packetDebugger.logResponse(Parameters);
+
+  const respOpCode = Parameters[253];
+
   // Player join new map
-  if (Parameters[253] == 35) {
-    map.id = Parameters[0];
+  if (respOpCode == 35) {
+    map.id = getParam(Parameters, ParameterMappings.ResponseJoinMap.mapId, -1, 'ResponseJoinMap');
   }
   // All data on the player joining the map (us)
-  else if (Parameters[253] == 2) {
-    lpX = Parameters[9][0];
-    lpY = Parameters[9][1];
+  else if (respOpCode == 2) {
+    const pos = getPosition(Parameters, ParameterMappings.ResponsePlayerJoin.position, 'ResponsePlayerJoin');
+    if (pos) {
+      lpX = pos.posX;
+      lpY = pos.posY;
+    }
   }
 }
 

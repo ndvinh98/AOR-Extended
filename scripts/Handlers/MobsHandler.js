@@ -1,4 +1,8 @@
 import { EnemyType } from "./EnemyType.js";
+import { ParameterMappings, getParam, getPosition } from '../Utils/ParameterMappings.js';
+
+const PM = ParameterMappings.NewMob;
+const PM_STATE = ParameterMappings.MobChangeState;
 
 class Mob {
   constructor(id, typeId, posX, posY, health, enchantmentLevel, rarity) {
@@ -64,41 +68,34 @@ export class MobsHandler {
   }
 
   NewMobEvent(parameters) {
-    const id = parseInt(parameters[0]); // entity id
-    let typeId = parseInt(parameters[1]); // real type id
+    const id = parseInt(getParam(parameters, PM.id, 0, 'NewMob'));
+    let typeId = parseInt(getParam(parameters, PM.typeId, 0, 'NewMob'));
 
-    const loc = parameters[7];
-    let posX = loc[0];
-    let posY = loc[1];
+    const pos = getPosition(parameters, PM.position, 'NewMob');
+    if (!pos) {
+      console.warn('[MobsHandler] Missing position in NewMob event');
+      return;
+    }
+    let posX = pos.posX;
+    let posY = pos.posY;
 
     let exp = 0;
     try {
-      exp = parseFloat(parameters[13]);
+      exp = parseFloat(getParam(parameters, PM.exp, 0, 'NewMob'));
     } catch (error) {
       exp = 0;
     }
 
-    let name = null;
-    try {
-      name = parameters[32];
-    } catch (error) {
-      try {
-        name = parameters[31];
-      } catch (error2) {
-        name = null;
-      }
+    let name = getParam(parameters, PM.name, null, 'NewMob');
+    if (name == null) {
+      name = getParam(parameters, PM.nameFallback, null, 'NewMob');
     }
 
-    let enchant = 0;
-    try {
-      enchant = parameters[33];
-    } catch (error) {
-      enchant = 0;
-    }
+    let enchant = getParam(parameters, PM.enchant, 0, 'NewMob');
 
     let rarity = 1;
     try {
-      rarity = parseInt(parameters[19]);
+      rarity = parseInt(getParam(parameters, PM.rarity, 1, 'NewMob'));
     } catch (error) {
       rarity = 1;
     }
@@ -220,8 +217,10 @@ export class MobsHandler {
   }
 
   updateEnchantEvent(parameters) {
-    const mobId = parameters[0];
-    const enchantmentLevel = parameters[1];
+    const mobId = getParam(parameters, PM_STATE.id, null, 'MobChangeState');
+    const enchantmentLevel = getParam(parameters, PM_STATE.enchantmentLevel, 0, 'MobChangeState');
+
+    if (mobId == null) return;
 
     var enemy = this.mobsList.find((mob) => mob.id == mobId);
 
